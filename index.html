@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Styled Employee JSON Accordion</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            background-color: #f9f9f9;
+        }
+
+        .actions {
+            margin: 15px 0;
+        }
+
+        button {
+            margin-right: 10px;
+            padding: 6px 12px;
+            font-size: 14px;
+            border: none;
+            background-color: #4CAF50;
+            color: white;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background-color: #45a049;
+        }
+
+        #json-container>div {
+            border: 1px solid #ddd;
+            background: #fff;
+            margin-bottom: 10px;
+            padding: 10px;
+            border-radius: 8px;
+        }
+
+        summary {
+            font-weight: bold;
+            cursor: pointer;
+            background-color: #e7f3ff;
+            padding: 4px 8px;
+            border-radius: 5px;
+        }
+
+        summary:hover {
+            background-color: #d0e8ff;
+        }
+
+        details {
+            margin-left: 20px;
+        }
+
+        label {
+            margin-left: 5px;
+        }
+
+        input[type="text"] {
+            margin-left: 8px;
+            margin-top: 4px;
+            width: 220px;
+            padding: 2px 5px;
+            font-size: 14px;
+        }
+
+        .property-container {
+            margin: 4px 0;
+            padding-left: 20px;
+        }
+
+        .top-checkbox {
+            margin-right: 5px;
+        }
+
+        pre {
+            background: #2d2d2d;
+            color: #f1f1f1;
+            padding: 12px;
+            border-radius: 5px;
+            overflow-x: auto;
+        }
+    </style>
+</head>
+
+<body>
+
+    <h2>Employee JSON Viewer with Styled Accordion</h2>
+
+    <div class="actions">
+        <button onclick="toggleAll(true)">Expand All</button>
+        <button onclick="toggleAll(false)">Collapse All</button>
+        <button onclick="downloadJSON()">Download JSON</button>
+    </div>
+
+    <div id="json-container"></div>
+
+    <h3>Selected JSON Output:</h3>
+    <pre id="output"></pre>
+
+    <script>
+        const originalJson = [
+            {
+                employeeId: "EMP1001",
+                name: { firstName: "Alice", lastName: "Johnson" },
+                age: 35,
+                education: [
+                    { degree: "B.Tech", field: "Computer Science", year: 2010 },
+                    { degree: "MBA", field: "Information Systems", year: 2013 }
+                ],
+                department: {
+                    name: "Technology",
+                    location: "New York",
+                    manager: { name: "Robert Smith", employeeId: "EMP9876" }
+                },
+                skills: ["JavaScript", "Python", "SQL"],
+                projects: [
+                    { name: "Inventory System", role: "Lead Developer", durationMonths: 12 },
+                    { name: "HR Portal", role: "Project Manager", durationMonths: 8 }
+                ],
+                active: true
+            },
+            {
+                employeeId: "EMP1002",
+                name: { firstName: "Bob", lastName: "Miller" },
+                age: 29,
+                education: [
+                    { degree: "B.Sc", field: "Information Tech", year: 2014 }
+                ],
+                department: {
+                    name: "Support",
+                    location: "Chicago",
+                    manager: { name: "Laura White", employeeId: "EMP8765" }
+                },
+                skills: ["Linux", "Customer Support", "Bash"],
+                projects: [
+                    { name: "Support Dashboard", role: "Analyst", durationMonths: 6 }
+                ],
+                active: false
+            }
+        ];
+
+        let selectedJson = JSON.parse(JSON.stringify(originalJson));
+
+        function createAccordion(obj, parent, path = []) {
+            if (Array.isArray(obj)) {
+                obj.forEach((item, index) => {
+                    const fullPath = [...path, index];
+                    const container = document.createElement('div');
+                    const checkbox = document.createElement('input');
+                    checkbox.type = 'checkbox';
+                    checkbox.checked = true;
+                    checkbox.dataset.path = JSON.stringify(fullPath);
+                    checkbox.classList.add('top-checkbox');
+
+                    const label = document.createElement('label');
+                    label.textContent = `Item ${index}`;
+
+                    const details = document.createElement('details');
+                    const summary = document.createElement('summary');
+                    summary.textContent = `Item ${index}`;
+                    details.appendChild(summary);
+                    createAccordion(item, details, fullPath);
+
+                    container.appendChild(checkbox);
+                    container.appendChild(label);
+                    container.appendChild(details);
+                    parent.appendChild(container);
+                });
+                return;
+            }
+
+            for (let key in obj) {
+                const fullPath = [...path, key];
+                const value = obj[key];
+                const container = document.createElement('div');
+                container.classList.add('property-container');
+
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.checked = true;
+                checkbox.dataset.path = JSON.stringify(fullPath);
+
+                const label = document.createElement('label');
+                label.textContent = `${key}:`;
+
+                container.appendChild(checkbox);
+                container.appendChild(label);
+
+                if (typeof value === 'object' && value !== null) {
+                    const details = document.createElement('details');
+                    const summary = document.createElement('summary');
+                    summary.textContent = Array.isArray(value) ? `${key} [Array]` : `${key} [Object]`;
+                    details.appendChild(summary);
+                    createAccordion(value, details, fullPath);
+                    container.appendChild(details);
+                } else {
+                    const input = document.createElement('input');
+                    input.type = 'text';
+                    input.value = value;
+                    input.dataset.path = JSON.stringify(fullPath);
+                    input.addEventListener('change', () => {
+                        updateSelectedValue(fullPath, input.value);
+                    });
+                    container.appendChild(input);
+                }
+
+                parent.appendChild(container);
+            }
+        }
+
+        function updateSelectedValue(path, newValue) {
+            let ref = selectedJson;
+            for (let i = 0; i < path.length - 1; i++) {
+                ref = ref[path[i]];
+            }
+            const key = path[path.length - 1];
+            try {
+                ref[key] = JSON.parse(newValue);
+            } catch {
+                ref[key] = newValue;
+            }
+            renderOutput();
+        }
+
+        function updateSelectedJson(path, checked) {
+            if (path.length === 1) {
+                const index = path[0];
+                if (checked) {
+                    selectedJson[index] = JSON.parse(JSON.stringify(originalJson[index]));
+                } else {
+                    selectedJson[index] = null;
+                }
+                selectedJson = selectedJson.filter(item => item !== null);
+            } else {
+                let refOriginal = originalJson;
+                let refSelected = selectedJson;
+
+                for (let i = 0; i < path.length - 1; i++) {
+                    const key = path[i];
+                    if (refSelected[key] === undefined) {
+                        refSelected[key] = Array.isArray(refOriginal[key]) ? [] : {};
+                    }
+                    refOriginal = refOriginal[key];
+                    refSelected = refSelected[key];
+                }
+
+                const lastKey = path[path.length - 1];
+                if (checked) {
+                    refSelected[lastKey] = refOriginal[lastKey];
+                } else {
+                    if (Array.isArray(refSelected)) {
+                        refSelected.splice(lastKey, 1);
+                    } else {
+                        delete refSelected[lastKey];
+                    }
+                }
+            }
+            renderOutput();
+        }
+
+        function toggleAll(expand) {
+            document.querySelectorAll("details").forEach(detail => {
+                detail.open = expand;
+            });
+        }
+
+        function downloadJSON() {
+            const blob = new Blob([JSON.stringify(selectedJson, null, 2)], { type: "application/json" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = "selected.json";
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        function renderOutput() {
+            document.getElementById("output").textContent = JSON.stringify(selectedJson, null, 2);
+        }
+
+        document.addEventListener("change", function (e) {
+            if (e.target.type === "checkbox") {
+                const path = JSON.parse(e.target.dataset.path);
+                updateSelectedJson(path, e.target.checked);
+            }
+        });
+
+        // Initial render
+        createAccordion(originalJson, document.getElementById("json-container"));
+        renderOutput();
+    </script>
+
+</body>
+
+</html>
