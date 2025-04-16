@@ -1,0 +1,129 @@
+@page "/jsonaccordion"
+@using System.Text.Json
+@using System.Text.Json.Nodes
+@using YourApp.Components
+@using YourApp.Models
+
+<h3>JSON Accordion with Checkboxes (Blazor)</h3>
+
+@if (RootNodes != null)
+{
+    @foreach (var node in RootNodes)
+    {
+        <JsonNode TItem="object" Node="node" OnChange="UpdateJsonOutput" />
+    }
+    <h4>Selected JSON:</h4>
+    <pre>@JsonOutput</pre>
+}
+else
+{
+    <p>Loading...</p>
+}
+
+@code {
+    private List<JsonNode>? RootNodes;
+    private string JsonOutput = "Loading...";
+
+    private string OriginalJson = """
+    [
+        {
+            "name": "Alice",
+            "age": 30,
+            "department": {
+                "name": "Engineering",
+                "manager": "John"
+            },
+            "education": [
+                { "degree": "B.Tech", "university": "ABC University" },
+                { "degree": "M.Tech", "university": "XYZ Institute" }
+            ]
+        },
+        {
+            "name": "Bob",
+            "age": 28,
+            "department": {
+                "name": "Marketing",
+                "manager": "Sara"
+            },
+            "education": [
+                { "degree": "BBA", "university": "LMN College" }
+            ]
+        }
+    ]
+    """;
+
+    protected override void OnInitialized()
+    {
+        var jsonNode = JsonNode.Parse(OriginalJson);
+        RootNodes = ConvertToJsonNodes(jsonNode);
+        UpdateJsonOutput();
+    }
+
+    private List<JsonNode> ConvertToJsonNodes(JsonNode? node, string? key = null)
+    {
+        var result = new List<JsonNode>();
+        if (node is JsonArray arr)
+        {
+            int index = 0;
+            foreach (var item in arr)
+            {
+                var childNode = new JsonNode
+                {
+                    Key = key != null ? $"{key}[{index}]" : $"Item {index}",
+                    Children = ConvertToJsonNodes(item),
+                    IsChecked = true
+                };
+                result.Add(childNode);
+                index++;
+            }
+        }
+        else if (node is JsonObject obj)
+        {
+            var current = new JsonNode
+            {
+                Key = key,
+                Children = new(),
+                IsChecked = true
+            };
+
+            foreach (var prop in obj)
+            {
+                current.Children.AddRange(ConvertToJsonNodes(prop.Value, prop.Key));
+            }
+            result.Add(current);
+        }
+        else
+        {
+            result.Add(new JsonNode { Key = key, Value = node?.ToString(), IsChecked = true });
+        }
+        return result;
+    }
+
+    private void UpdateJsonOutput()
+    {
+        var filtered = FilterJsonNodes(RootNodes);
+        JsonOutput = JsonSerializer.Serialize(filtered, new JsonSerializerOptions { WriteIndented = true });
+    }
+
+    private object? FilterJsonNodes(List<JsonNode>? nodes)
+    {
+        if (nodes == null) return null;
+
+        var list = new List<object>();
+        foreach (var node in nodes)
+        {
+            if (!node.IsChecked) continue;
+
+            if (node.Children != null && node.Children.Any())
+            {
+                var childObj = FilterJsonNodes(node.Children);
+                list.Add(childObj ?? new Dictionary<string, object>());
+            }
+            else
+            {
+                list.Add(new Dictionary<string, object?> { [node.Key ?? ""] = node.Value });
+            }
+        }
+        return list;
+    }
+}
