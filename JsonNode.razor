@@ -1,0 +1,50 @@
+@using System.Text.Json
+@inject ILogger<JsonNode> Logger
+@typeparam TItem
+<div class="ms-@Level">
+    <div>
+        @if (Node.Children?.Count > 0)
+        {
+            <details open>
+                <summary>
+                    <input type="checkbox" @bind="Node.IsChecked" @onchange="OnCheckboxChanged" />
+                    <span>@Node.Key</span>
+                </summary>
+                @foreach (var child in Node.Children)
+                {
+                    <JsonNode TItem="object" Node="child" Level="@(Level + 1)" OnChange="OnChange" />
+                }
+            </details>
+        }
+        else
+        {
+            <div>
+                <input type="checkbox" @bind="Node.IsChecked" @onchange="OnCheckboxChanged" />
+                <span>@Node.Key: </span>
+                <span class="value">@Node.Value</span>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter] public JsonNode Node { get; set; } = default!;
+    [Parameter] public int Level { get; set; } = 0;
+    [Parameter] public EventCallback OnChange { get; set; }
+
+    private async Task OnCheckboxChanged(ChangeEventArgs e)
+    {
+        SetChildCheckState(Node, Node.IsChecked);
+        await OnChange.InvokeAsync();
+    }
+
+    private void SetChildCheckState(JsonNode node, bool state)
+    {
+        if (node.Children == null) return;
+        foreach (var child in node.Children)
+        {
+            child.IsChecked = state;
+            SetChildCheckState(child, state);
+        }
+    }
+}
