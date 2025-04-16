@@ -1,166 +1,194 @@
-@page "/jsonaccordion"
+@page "/json-accordion"
 @using System.Text.Json
 @using System.Text.Json.Nodes
 
-<h3>JSON Accordion with Checkboxes</h3>
+<h2>JSON Accordion with Checkboxes</h2>
 
-<div>
-    @if (RootJson != null)
+@if (RootJson is JsonObject rootObj)
+{
+    foreach (var prop in rootObj)
     {
-        @RenderJson(RootJson, "")
-        <h4>Selected JSON:</h4>
-        <pre>@FilteredJson</pre>
+        @RenderNode(prop.Value, prop.Key, 0)
     }
-    else
-    {
-        <p>Loading...</p>
-    }
-</div>
+}
+else
+{
+    @RenderNode(RootJson, "", 0)
+}
+
+<h3>Selected JSON:</h3>
+<pre>@FilteredJson</pre>
 
 @code {
     private JsonNode? RootJson;
-    private Dictionary<string, bool> CheckboxMap = new();
     private string FilteredJson = "";
 
-    private string SampleJson = """
-    [
-      {
-        "name": "Alice",
-        "age": 30,
-        "department": {
-          "name": "Engineering",
-          "manager": "John"
-        },
-        "education": [
-          { "degree": "B.Tech", "university": "ABC University" },
-          { "degree": "M.Tech", "university": "XYZ Institute" }
-        ]
-      },
-      {
-        "name": "Bob",
-        "age": 28,
-        "department": {
-          "name": "Marketing",
-          "manager": "Sara"
-        },
-        "education": [
-          { "degree": "BBA", "university": "LMN College" }
-        ]
-      }
-    ]
-    """;
+    private Dictionary<string, bool> CheckboxMap = new();
+    private Dictionary<string, List<string>> ChildPaths = new();
 
     protected override void OnInitialized()
     {
-        RootJson = JsonNode.Parse(SampleJson);
-        InitializeCheckboxes(RootJson, "");
+        // Sample JSON
+        var json = """
+        {
+          "Alice": {
+            "age": 30,
+            "department": {
+              "name": "Engineering",
+              "manager": "John"
+            },
+            "education": [
+              { "degree": "B.Tech", "university": "ABC University" },
+              { "degree": "M.Tech", "university": "XYZ Institute" }
+            ]
+          },
+          "Bob": {
+            "age": 28,
+            "department": {
+              "name": "Marketing",
+              "manager": "Sara"
+            },
+            "education": [
+              { "degree": "BBA", "university": "LMN College" }
+            ]
+          }
+        }
+        """;
+
+        RootJson = JsonNode.Parse(json);
+        BuildCheckboxMap(RootJson, "");
         UpdateFilteredJson();
     }
 
-    void InitializeCheckboxes(JsonNode? node, string path)
+    void BuildCheckboxMap(JsonNode? node, string path)
     {
+        if (!CheckboxMap.ContainsKey(path))
+            CheckboxMap[path] = true;
+
+        if (!ChildPaths.ContainsKey(path))
+            ChildPaths[path] = new List<string>();
+
         if (node is JsonObject obj)
         {
-            CheckboxMap[path] = true;
             foreach (var prop in obj)
             {
                 var newPath = path == "" ? prop.Key : $"{path}.{prop.Key}";
-                InitializeCheckboxes(prop.Value, newPath);
+                ChildPaths[path].Add(newPath);
+                BuildCheckboxMap(prop.Value, newPath);
             }
         }
         else if (node is JsonArray arr)
         {
-            CheckboxMap[path] = true;
             for (int i = 0; i < arr.Count; i++)
             {
                 var newPath = path == "" ? $"{i}" : $"{path}.{i}";
-                InitializeCheckboxes(arr[i], newPath);
+                ChildPaths[path].Add(newPath);
+                BuildCheckboxMap(arr[i], newPath);
             }
-        }
-        else
-        {
-            CheckboxMap[path] = true;
         }
     }
 
-    RenderFragment RenderJson(JsonNode? node, string path) => builder =>
+    void SetCheckboxRecursively(string path, bool value)
     {
+        CheckboxMap[path] = value;
+
+        if (ChildPaths.TryGetValue(path, out var children))
+        {
+            foreach (var childPath in children)
+            {
+                SetCheckboxRecursively(childPath, value);
+            }
+        }
+    }
+
+    RenderFragment RenderNode(JsonNode? node, string path, int level) => builder =>
+    {
+        int seq = 0;
+
+        string label = path.Split('.').Last();
+
         if (node is JsonObject obj)
         {
-            int seq = 0;
             builder.OpenElement(seq++, "details");
+            builder.AddAttribute(seq++, "style", $"margin-left: {level * 20}px");
             builder.OpenElement(seq++, "summary");
+
             builder.OpenElement(seq++, "input");
             builder.AddAttribute(seq++, "type", "checkbox");
             builder.AddAttribute(seq++, "checked", CheckboxMap[path]);
             builder.AddAttribute(seq++, "onchange", EventCallback.Factory.Create<ChangeEventArgs>(this, e =>
             {
-                CheckboxMap[path] = (bool)(e.Value ?? false);
+                var isChecked = (bool)e.Value;
+                SetCheckboxRecursively(path, isChecked);
                 UpdateFilteredJson();
-                StateHasChanged();
             }));
-            builder.CloseElement();
-            builder.AddContent(seq++, $" {path.Split('.').LastOrDefault() ?? "Root"}");
+            builder.CloseElement(); // input
+
+            builder.AddContent(seq++, $" {label}");
+
             builder.CloseElement(); // summary
 
             foreach (var prop in obj)
             {
-                var newPath = path == "" ? prop.Key : $"{path}.{prop.Key}";
-                builder.AddContent(seq++, RenderJson(prop.Value, newPath));
+                builder.AddContent(seq++, RenderNode(prop.Value, $"{path}.{prop.Key}", level + 1));
             }
+
             builder.CloseElement(); // details
         }
         else if (node is JsonArray arr)
         {
-            int seq = 0;
             builder.OpenElement(seq++, "details");
+            builder.AddAttribute(seq++, "style", $"margin-left: {level * 20}px");
             builder.OpenElement(seq++, "summary");
+
             builder.OpenElement(seq++, "input");
             builder.AddAttribute(seq++, "type", "checkbox");
             builder.AddAttribute(seq++, "checked", CheckboxMap[path]);
             builder.AddAttribute(seq++, "onchange", EventCallback.Factory.Create<ChangeEventArgs>(this, e =>
             {
-                CheckboxMap[path] = (bool)(e.Value ?? false);
+                var isChecked = (bool)e.Value;
+                SetCheckboxRecursively(path, isChecked);
                 UpdateFilteredJson();
-                StateHasChanged();
             }));
-            builder.CloseElement();
-            builder.AddContent(seq++, $" {path.Split('.').LastOrDefault() ?? "Array"}");
+            builder.CloseElement(); // input
+
+            builder.AddContent(seq++, $" {label} (Array)");
+
             builder.CloseElement(); // summary
 
             for (int i = 0; i < arr.Count; i++)
             {
-                var newPath = path == "" ? $"{i}" : $"{path}.{i}";
-                builder.AddContent(seq++, RenderJson(arr[i], newPath));
+                builder.AddContent(seq++, RenderNode(arr[i], $"{path}.{i}", level + 1));
             }
 
             builder.CloseElement(); // details
         }
         else
         {
-            int seq = 0;
             builder.OpenElement(seq++, "div");
+            builder.AddAttribute(seq++, "style", $"margin-left: {level * 20}px");
 
             builder.OpenElement(seq++, "input");
             builder.AddAttribute(seq++, "type", "checkbox");
             builder.AddAttribute(seq++, "checked", CheckboxMap[path]);
             builder.AddAttribute(seq++, "onchange", EventCallback.Factory.Create<ChangeEventArgs>(this, e =>
             {
-                CheckboxMap[path] = (bool)(e.Value ?? false);
+                CheckboxMap[path] = (bool)e.Value;
                 UpdateFilteredJson();
-                StateHasChanged();
             }));
-            builder.CloseElement();
+            builder.CloseElement(); // input
 
-            builder.AddContent(seq++, $" {path.Split('.').LastOrDefault() ?? "Value"}: ");
-            builder.OpenElement(seq++, "span");
-            builder.AddAttribute(seq++, "style", "background-color: #eee; padding: 2px 4px; border-radius: 4px;");
-            builder.AddContent(seq++, node?.ToString());
-            builder.CloseElement();
+            builder.AddContent(seq++, $" {label}: {node?.ToJsonString()}");
 
             builder.CloseElement(); // div
         }
     };
+
+    void UpdateFilteredJson()
+    {
+        var filtered = FilterJson(RootJson, "");
+        FilteredJson = JsonSerializer.Serialize(filtered, new JsonSerializerOptions { WriteIndented = true });
+    }
 
     JsonNode? FilterJson(JsonNode? node, string path)
     {
@@ -174,7 +202,7 @@
                 var newPath = path == "" ? prop.Key : $"{path}.{prop.Key}";
                 var filtered = FilterJson(prop.Value, newPath);
                 if (filtered != null)
-                    filteredObj[prop.Key] = filtered;
+                    filteredObj[prop.Key] = filtered.DeepClone();
             }
             return filteredObj.Count > 0 ? filteredObj : null;
         }
@@ -186,19 +214,13 @@
                 var newPath = path == "" ? $"{i}" : $"{path}.{i}";
                 var filtered = FilterJson(arr[i], newPath);
                 if (filtered != null)
-                    filteredArr.Add(filtered);
+                    filteredArr.Add(filtered.DeepClone());
             }
             return filteredArr.Count > 0 ? filteredArr : null;
         }
         else
         {
-            return node;
+            return node?.DeepClone();
         }
-    }
-
-    void UpdateFilteredJson()
-    {
-        var filtered = FilterJson(RootJson, "");
-        FilteredJson = JsonSerializer.Serialize(filtered, new JsonSerializerOptions { WriteIndented = true });
     }
 }
