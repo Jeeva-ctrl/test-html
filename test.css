@@ -1,0 +1,11 @@
+.value {
+  background-color: #f0f0f0;
+  padding: 2px 6px;
+  margin-left: 4px;
+  border-radius: 4px;
+  display: inline-block;
+}
+.ms-0 { margin-left: 0; }
+.ms-1 { margin-left: 20px; }
+.ms-2 { margin-left: 40px; }
+.ms-3 { margin-left: 60px; }
