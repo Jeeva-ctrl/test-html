@@ -90,6 +90,8 @@ else
 
     void SetCheckboxRecursively(string path, bool value)
     {
+        if (!CheckboxMap.ContainsKey(path)) return;
+
         CheckboxMap[path] = value;
 
         if (ChildPaths.TryGetValue(path, out var children))
@@ -121,6 +123,7 @@ else
                 var isChecked = (bool)e.Value;
                 SetCheckboxRecursively(path, isChecked);
                 UpdateFilteredJson();
+                StateHasChanged(); // important to refresh UI
             }));
             builder.CloseElement(); // input
 
@@ -149,6 +152,7 @@ else
                 var isChecked = (bool)e.Value;
                 SetCheckboxRecursively(path, isChecked);
                 UpdateFilteredJson();
+                StateHasChanged();
             }));
             builder.CloseElement(); // input
 
