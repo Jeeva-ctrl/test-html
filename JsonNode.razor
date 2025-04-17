@@ -1,121 +1,138 @@
-<script>
-    let checkboxMap = {};
+@page "/json-accordion"
+@inject IJSRuntime JS
 
-    window.initializeAccordionHandler = () => {
-        // This just sets up helper
-        window.renderAccordionFromJson = (jsonString) => {
-            const json = JSON.parse(jsonString);
-            checkboxMap = {};
+<h3>JSON Accordion</h3>
 
-            const container = document.getElementById('accordion-container');
-            container.innerHTML = '';
-            container.dataset.originalJson = JSON.stringify(json);
+<div id="accordion-container"></div>
 
-            Object.entries(json).forEach(([key, value]) => {
-                const node = createAccordion(key, value, key);
-                container.appendChild(node);
-            });
-        };
-    };
+<button @onclick="GetSelectedJson">Get Selected JSON</button>
 
-    function createAccordion(key, value, path) {
-        const wrapper = document.createElement('details');
-        wrapper.open = true;
+<h4>Filtered JSON</h4>
+<pre>@FilteredJson</pre>
 
-        const summary = document.createElement('summary');
+@code {
+    private string FilteredJson;
 
-        const checkbox = document.createElement('input');
-        checkbox.type = 'checkbox';
-        checkbox.checked = true;
-        checkbox.dataset.path = path;
-        checkbox.addEventListener('change', (e) => {
-            const checked = e.target.checked;
-            checkboxMap[path] = checked;
-            updateChildren(wrapper, checked);
-        });
-
-        checkboxMap[path] = true;
-
-        summary.appendChild(checkbox);
-        summary.append(` ${key}`);
-        wrapper.appendChild(summary);
-
-        if (typeof value === 'object' && value !== null) {
-            if (Array.isArray(value)) {
-                value.forEach((item, index) => {
-                    const child = createAccordion(`[${index}]`, item, `${path}[${index}]`);
-                    wrapper.appendChild(child);
-                });
-            } else {
-                Object.entries(value).forEach(([childKey, childVal]) => {
-                    const child = createAccordion(childKey, childVal, `${path}.${childKey}`);
-                    wrapper.appendChild(child);
-                });
+    private string jsonInput = """
+    {
+        "menu": {
+            "id": "file",
+            "value": "File",
+            "popup": {
+                "menuitem": [
+                    {"value": "New", "onclick": "CreateNewDoc()"},
+                    {"value": "Open", "onclick": "OpenDoc()"},
+                    {"value": "Close", "onclick": "CloseDoc()"}
+                ]
             }
-        } else {
-            const leaf = document.createElement('div');
-            leaf.style.marginLeft = '20px';
-
-            const leafCheckbox = document.createElement('input');
-            leafCheckbox.type = 'checkbox';
-            leafCheckbox.checked = true;
-            leafCheckbox.dataset.path = path;
-            leafCheckbox.addEventListener('change', (e) => {
-                checkboxMap[path] = e.target.checked;
-            });
-
-            checkboxMap[path] = true;
-
-            leaf.appendChild(leafCheckbox);
-            leaf.append(` ${key}: ${value}`);
-            wrapper.appendChild(leaf);
         }
+    }
+    """;
 
-        return wrapper;
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await JS.InvokeVoidAsync("renderAccordionFromJson", jsonInput);
+        }
     }
 
-    function updateChildren(parent, isChecked) {
-        const checkboxes = parent.querySelectorAll('input[type="checkbox"]');
-        checkboxes.forEach(cb => {
-            cb.checked = isChecked;
-            checkboxMap[cb.dataset.path] = isChecked;
+    private async Task GetSelectedJson()
+    {
+        FilteredJson = await JS.InvokeAsync<string>("getSelectedJson");
+    }
+}
+window.checkboxMap = {};
+window.jsonData = null;
+
+// Renders the accordion UI based on JSON data
+window.renderAccordionFromJson = (jsonString) => {
+    const container = document.getElementById('accordion-container');
+    container.innerHTML = '';  // Clear existing content
+    window.jsonData = JSON.parse(jsonString);
+    processNode(window.jsonData, "", container);
+};
+
+// Recursively process each node
+window.processNode = (node, path, container) => {
+    if (Array.isArray(node)) {
+        node.forEach((item, index) => {
+            const childPath = `${path}[${index}]`;
+            createAccordionElement(item, childPath, container);
+            processNode(item, childPath, container);
         });
-    }
-
-    function submitFilteredJson() {
-        const jsonText = document.getElementById('accordion-container').dataset.originalJson;
-        if (!jsonText) {
-            alert("Please load JSON first.");
-            return;
+    } else if (typeof node === "object" && node !== null) {
+        for (const key in node) {
+            const childPath = path ? `${path}.${key}` : key;
+            createAccordionElement(node[key], childPath, container);
+            processNode(node[key], childPath, container);
         }
-
-        const original = JSON.parse(jsonText);
-        const filtered = filterJson(original, "");
-
-        fetch('/your-submit-api-endpoint', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(filtered)
-        }).then(r => console.log('Submit response:', r));
     }
+};
 
-    function filterJson(node, path) {
-        if (!checkboxMap[path]) return null;
+// Create accordion entry
+window.createAccordionElement = (node, path, container) => {
+    const wrapper = document.createElement('details');
+    wrapper.setAttribute('data-path', path);
 
-        if (Array.isArray(node)) {
-            return node.map((item, i) => filterJson(item, `${path}[${i}]`));
-        } else if (typeof node === 'object' && node !== null) {
-            const result = {};
-            for (const [k, v] of Object.entries(node)) {
-                const childPath = path ? `${path}.${k}` : k;
-                const filtered = filterJson(v, childPath);
-                if (filtered !== null || v === null) {
-                    result[k] = filtered ?? null;
-                }
+    const summary = document.createElement('summary');
+    summary.textContent = path.split('.').pop(); // Label
+
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.checked = true;
+    checkbox.setAttribute('data-path', path);
+    checkbox.addEventListener('change', (e) => handleCheckboxChange(e, path));
+
+    summary.insertBefore(checkbox, summary.firstChild);
+    wrapper.appendChild(summary);
+    container.appendChild(wrapper);
+};
+
+// On checkbox change
+window.handleCheckboxChange = (event, path) => {
+    const isChecked = event.target.checked;
+    window.checkboxMap[path] = isChecked;
+
+    if (!isChecked) {
+        updateChildrenCheckboxState(path, false);
+    }
+};
+
+// Recursively update children checkboxes
+window.updateChildrenCheckboxState = (path, checked) => {
+    const elements = document.querySelectorAll(`[data-path^="${path}."]`);
+    elements.forEach((elem) => {
+        const checkbox = elem.querySelector('input[type="checkbox"]');
+        if (checkbox) {
+            checkbox.checked = checked;
+            const childPath = checkbox.getAttribute('data-path');
+            window.checkboxMap[childPath] = checked;
+            updateChildrenCheckboxState(childPath, checked);
+        }
+    });
+};
+
+// Return filtered JSON string
+window.getSelectedJson = () => {
+    return JSON.stringify(filterJson(window.checkboxMap, window.jsonData), null, 2);
+};
+
+// Filter the JSON tree recursively
+window.filterJson = (checkboxMap, data, path = "") => {
+    if (Array.isArray(data)) {
+        return data
+            .map((item, index) => filterJson(checkboxMap, item, `${path}[${index}]`))
+            .filter((item) => item !== null);
+    } else if (typeof data === "object" && data !== null) {
+        const result = {};
+        for (const key in data) {
+            const childPath = path ? `${path}.${key}` : key;
+            if (checkboxMap[childPath]) {
+                result[key] = filterJson(checkboxMap, data[key], childPath);
             }
-            return result;
-        } else {
-            return node;
         }
+        return Object.keys(result).length > 0 ? result : null;
     }
-</script>
+    return checkboxMap[path] ? data : null;
+};
