@@ -72,4 +72,134 @@
                 CheckboxMap[currentPath] = isChecked;
 
                 builder.OpenElement(0, "details");
-                builder.OpenE
+                builder.OpenElement(1, "summary");
+
+                builder.OpenElement(2, "input");
+                builder.AddAttribute(3, "type", "checkbox");
+                builder.AddAttribute(4, "checked", isChecked);
+                builder.AddAttribute(5, "onchange", EventCallback.Factory.Create<ChangeEventArgs>(this, e =>
+                {
+                    bool isChecked = (bool)e.Value;
+                    CheckboxMap[currentPath] = isChecked;
+
+                    if (array[i] is JsonObject || array[i] is JsonArray)
+                    {
+                        UpdateChildrenCheckboxes(array[i], currentPath, isChecked);
+                    }
+                    UpdateFilteredJson();
+                    StateHasChanged();
+                }));
+                builder.CloseElement();
+
+                builder.AddContent(6, $" Item {i}");
+                builder.CloseElement();
+
+                builder.AddContent(7, RenderJsonAccordion(array[i], currentPath));
+                builder.CloseElement();
+            }
+        }
+        else
+        {
+            bool isChecked = !CheckboxMap.ContainsKey(path) || CheckboxMap[path];
+            CheckboxMap[path] = isChecked;
+
+            builder.OpenElement(0, "div");
+            builder.OpenElement(1, "input");
+            builder.AddAttribute(2, "type", "checkbox");
+            builder.AddAttribute(3, "checked", isChecked);
+            builder.AddAttribute(4, "onchange", EventCallback.Factory.Create<ChangeEventArgs>(this, e =>
+            {
+                CheckboxMap[path] = (bool)e.Value;
+                UpdateFilteredJson();
+            }));
+            builder.CloseElement();
+
+            builder.AddContent(5, $" {path.Split('.').Last()}: {node?.ToJsonString() ?? "null"}");
+            builder.CloseElement();
+        }
+    };
+
+    void UpdateChildrenCheckboxes(JsonNode? node, string path, bool isChecked)
+    {
+        if (node is JsonObject obj)
+        {
+            foreach (var prop in obj)
+            {
+                var childPath = $"{path}.{prop.Key}";
+                CheckboxMap[childPath] = isChecked;
+                if (prop.Value is JsonObject || prop.Value is JsonArray)
+                {
+                    UpdateChildrenCheckboxes(prop.Value, childPath, isChecked);
+                }
+            }
+        }
+        else if (node is JsonArray array)
+        {
+            for (int i = 0; i < array.Count; i++)
+            {
+                var childPath = $"{path}.{i}";
+                CheckboxMap[childPath] = isChecked;
+                if (array[i] is JsonObject || array[i] is JsonArray)
+                {
+                    UpdateChildrenCheckboxes(array[i], childPath, isChecked);
+                }
+            }
+        }
+    }
+
+    void UpdateFilteredJson()
+    {
+        var clone = JsonNode.Parse(JsonData.ToJsonString());
+        var filtered = FilterJson(clone, "");
+        FilteredJson = filtered?.ToJsonString(new() { WriteIndented = true }) ?? "{}";
+    }
+
+    JsonNode? FilterJson(JsonNode? node, string path)
+    {
+        if (node is JsonObject obj)
+        {
+            var newObj = new JsonObject();
+            foreach (var prop in obj)
+            {
+                var currentPath = path == "" ? prop.Key : $"{path}.{prop.Key}";
+                if (!CheckboxMap.TryGetValue(currentPath, out var isChecked) || isChecked)
+                {
+                    var filteredChild = FilterJson(prop.Value, currentPath);
+                    if (filteredChild != null || prop.Value is null)
+                    {
+                        newObj[prop.Key] = filteredChild ?? JsonValue.Create((string?)null);
+                    }
+                }
+            }
+            return newObj.Count > 0 ? newObj : null;
+        }
+        else if (node is JsonArray array)
+        {
+            var newArr = new JsonArray();
+            for (int i = 0; i < array.Count; i++)
+            {
+                var currentPath = path == "" ? i.ToString() : $"{path}.{i}";
+                if (!CheckboxMap.TryGetValue(currentPath, out var isChecked) || isChecked)
+                {
+                    var filteredChild = FilterJson(array[i], currentPath);
+                    if (filteredChild != null || array[i] is null)
+                    {
+                        newArr.Add(filteredChild ?? JsonValue.Create((string?)null));
+                    }
+                }
+            }
+            return newArr.Count > 0 ? newArr : null;
+        }
+        else
+        {
+            if (!CheckboxMap.TryGetValue(path, out var isChecked) || isChecked)
+                return node;
+            return null;
+        }
+    }
+
+    protected override void OnInitialized()
+    {
+        UpdateFilteredJson();
+    }
+}
