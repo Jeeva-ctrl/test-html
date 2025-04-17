@@ -1,31 +1,55 @@
 @page "/json-accordion"
-@using System.Text.Json.Nodes
 @inject IJSRuntime JSRuntime
 
-<h3>JSON Accordion</h3>
-<button @onclick="CallApiWithSelectedJson">Call API</button>
+<h3>JSON Accordion with Checkboxes</h3>
 
 <div id="jsonAccordion"></div>
+<button class="btn btn-primary mt-3" @onclick="GetSelectedJson">Get Selected JSON</button>
+
+<pre class="mt-3 bg-light p-2" id="selectedJsonPreview"></pre>
 
 @code {
-    [Parameter] public JsonNode JsonData { get; set; } = JsonNode.Parse("{ \"new\": { \"test\": \"test\" } }")!;
-
-    protected override async Task OnInitializedAsync()
+    private string JsonData = """
     {
-        // Initialize JSON Accordion with JS
-        await JSRuntime.InvokeVoidAsync("initializeAccordion", JsonData);
+      "employees": [
+        {
+          "name": "Alice",
+          "age": 30,
+          "education": {
+            "degree": "MBA",
+            "university": "Stanford"
+          },
+          "department": "HR"
+        },
+        {
+          "name": "Bob",
+          "age": 28,
+          "education": {
+            "degree": "B.Tech",
+            "university": "MIT"
+          },
+          "department": "Engineering"
+        }
+      ],
+      "company": {
+        "name": "TechCorp",
+        "location": "New York"
+      }
+    }
+    """;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await JSRuntime.InvokeVoidAsync("initializeAccordion", JsonData);
+        }
     }
 
-    // Call API with selected JSON
-    private async Task CallApiWithSelectedJson()
+    private async Task GetSelectedJson()
     {
-        var selectedJson = await JSRuntime.InvokeAsync<JsonNode>("getSelectedJson");
-        if (selectedJson != null)
-        {
-            // API call logic with the selected JSON
-            Console.WriteLine("Selected JSON: " + selectedJson.ToString());
-            // Add your API call logic here
-        }
+        var selectedJson = await JSRuntime.InvokeAsync<string>("getSelectedJson");
+        await JSRuntime.InvokeVoidAsync("showJsonPreview", selectedJson);
     }
 }
 window.initializeAccordion = (jsonData) => {
