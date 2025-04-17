@@ -1,121 +1,153 @@
-@page "/accordion"
+@page "/json-accordion"
 @using System.Text.Json.Nodes
-@inject IJSRuntime JS
-@inject HttpClient Http
+@inject IJSRuntime JSRuntime
 
 <h3>JSON Accordion</h3>
-<button @onclick="FetchAndRender">Fetch Data and Render</button>
+<button @onclick="CallApiWithSelectedJson">Call API</button>
 
-<div id="accordionContainer"></div>
+<div id="jsonAccordion"></div>
 
 @code {
     [Parameter] public JsonNode JsonData { get; set; } = JsonNode.Parse("{ \"new\": { \"test\": \"test\" } }")!;
-    private Dictionary<string, bool> CheckboxMap = new();
 
-    // Method to simulate fetching JSON from API
-    private async Task FetchAndRender()
+    protected override async Task OnInitializedAsync()
     {
-        // Simulating fetching JSON from an API
-        var response = await Http.GetFromJsonAsync<JsonNode>("your-api-endpoint");
-
-        if (response is not null)
-        {
-            JsonData = response;
-            await RenderAccordionAsync();
-        }
+        // Initialize JSON Accordion with JS
+        await JSRuntime.InvokeVoidAsync("initializeAccordion", JsonData);
     }
 
-    // Render the Accordion dynamically
-    private async Task RenderAccordionAsync()
+    // Call API with selected JSON
+    private async Task CallApiWithSelectedJson()
     {
-        var json = JsonData;
-        var jsonString = json?.ToString();
-        await JS.InvokeVoidAsync("renderAccordion", "accordionContainer", jsonString);
-    }
-
-    // Toggle the checkbox state and propagate the change
-    private void ToggleCheckbox(ChangeEventArgs e, string path, JsonNode? node)
-    {
-        bool isChecked = (bool)e.Value!;
-        CheckboxMap[path] = isChecked;
-
-        // If it's an object or array, propagate the state to all children
-        if (node is JsonObject obj)
+        var selectedJson = await JSRuntime.InvokeAsync<JsonNode>("getSelectedJson");
+        if (selectedJson != null)
         {
-            foreach (var prop in obj)
-            {
-                var childPath = string.IsNullOrEmpty(path) ? prop.Key : $"{path}.{prop.Key}";
-                ToggleCheckbox(new ChangeEventArgs { Value = isChecked }, childPath, prop.Value);
-            }
-        }
-        else if (node is JsonArray arr)
-        {
-            for (int i = 0; i < arr.Count; i++)
-            {
-                var childPath = $"{path}[{i}]";
-                ToggleCheckbox(new ChangeEventArgs { Value = isChecked }, childPath, arr[i]);
-            }
+            // API call logic with the selected JSON
+            Console.WriteLine("Selected JSON: " + selectedJson.ToString());
+            // Add your API call logic here
         }
     }
 }
-<script>
-    let checkboxStates = {};
+window.initializeAccordion = (jsonData) => {
+    // Initialize the accordion with checkboxes
+    buildAccordion(jsonData, "jsonAccordion");
+};
 
-    // Render Accordion with JSON data
-    function renderAccordion(containerId, jsonData) {
-        const container = document.getElementById(containerId);
-        container.innerHTML = "";  // Clear any existing content
-        checkboxStates[containerId] = {};
+window.buildAccordion = (node, containerId) => {
+    const container = document.getElementById(containerId);
+    container.innerHTML = ""; // Clear the container
 
-        const json = JSON.parse(jsonData);
-        const rootKeys = Object.keys(json);
+    function createAccordion(node, parentPath) {
+        if (typeof node === "object" && !Array.isArray(node)) {
+            // Create a JSON Object accordion
+            const details = document.createElement("details");
+            const summary = document.createElement("summary");
+            const checkbox = document.createElement("input");
+            checkbox.type = "checkbox";
+            checkbox.checked = true;
+            checkbox.onclick = (e) => toggleCheckbox(e, parentPath, node);
+            summary.appendChild(checkbox);
+            summary.appendChild(document.createTextNode(parentPath || "Root"));
 
-        rootKeys.forEach(key => {
-            const el = renderNode(json[key], key, key, containerId);
-            container.appendChild(el);
-        });
-    }
+            details.appendChild(summary);
+            container.appendChild(details);
 
-    // Render Node Function (handles both objects and arrays)
-    function renderNode(jsonNode, path, key, containerId) {
-        let details = document.createElement('details');
-        details.setAttribute('id', `accordion_${path}`);
-        
-        let summary = document.createElement('summary');
-        let checkbox = document.createElement('input');
-        checkbox.type = 'checkbox';
-        checkbox.checked = checkboxStates[containerId]?.[path] ?? true;
-        checkbox.onchange = function () {
-            checkboxStates[containerId][path] = checkbox.checked;
-            renderAccordion(containerId, window.originalJsonData);
-        };
+            for (let key in node) {
+                createAccordion(node[key], parentPath ? `${parentPath}.${key}` : key);
+            }
+        } else if (Array.isArray(node)) {
+            // Create a JSON Array accordion
+            const details = document.createElement("details");
+            const summary = document.createElement("summary");
+            const checkbox = document.createElement("input");
+            checkbox.type = "checkbox";
+            checkbox.checked = true;
+            checkbox.onclick = (e) => toggleCheckbox(e, parentPath, node);
+            summary.appendChild(checkbox);
+            summary.appendChild(document.createTextNode(parentPath || "Array"));
 
-        // Add + / - icon for accordion open/close
-        let icon = document.createElement('span');
-        icon.innerText = checkbox.checked ? '-' : '+';
-        summary.appendChild(icon);
+            details.appendChild(summary);
+            container.appendChild(details);
 
-        // Add the checkbox to the summary
-        summary.appendChild(checkbox);
-        summary.appendChild(document.createTextNode(key));
-        details.appendChild(summary);
-
-        // If it's an object or array, recurse
-        if (jsonNode && typeof jsonNode === 'object') {
-            const nodeKeys = Array.isArray(jsonNode) ? jsonNode : Object.keys(jsonNode);
-            nodeKeys.forEach((childKey, idx) => {
-                const childPath = `${path}.${childKey || idx}`;
-                const childNode = jsonNode[childKey || idx];
-                const childNodeElement = renderNode(childNode, childPath, childKey || idx, containerId);
-                details.appendChild(childNodeElement);
-            });
+            for (let i = 0; i < node.length; i++) {
+                createAccordion(node[i], `${parentPath}[${i}]`);
+            }
         } else {
-            // Display the value of the leaf node (primitive value)
-            let div = document.createElement('div');
-            div.innerText = jsonNode;
-            details.appendChild(div);
-        }
+            // Handle primitive values (string, number, etc.)
+            const div = document.createElement("div");
+            const checkbox = document.createElement("input");
+            checkbox.type = "checkbox";
+            checkbox.checked = true;
+            checkbox.onclick = (e) => toggleCheckbox(e, parentPath, node);
 
-        return details;
+            div.appendChild(checkbox);
+            div.appendChild(document.createTextNode(`${parentPath}: ${node}`));
+            container.appendChild(div);
+        }
     }
-</script>
+
+    createAccordion(node, "");
+};
+
+window.toggleCheckbox = (event, path, node) => {
+    const isChecked = event.target.checked;
+    // Save checkbox state
+    setCheckboxState(path, isChecked);
+
+    if (typeof node === "object" && !Array.isArray(node)) {
+        // Recursively uncheck or check child elements
+        for (let key in node) {
+            const childPath = `${path}.${key}`;
+            const childNode = node[key];
+            const childCheckbox = document.querySelector(`[data-path="${childPath}"]`);
+            if (childCheckbox) {
+                childCheckbox.checked = isChecked;
+            }
+        }
+    } else if (Array.isArray(node)) {
+        // Recursively uncheck or check child elements for arrays
+        for (let i = 0; i < node.length; i++) {
+            const childPath = `${path}[${i}]`;
+            const childNode = node[i];
+            const childCheckbox = document.querySelector(`[data-path="${childPath}"]`);
+            if (childCheckbox) {
+                childCheckbox.checked = isChecked;
+            }
+        }
+    }
+};
+
+// Store checkbox state in local storage or memory
+let checkboxMap = {};
+
+window.setCheckboxState = (path, isChecked) => {
+    checkboxMap[path] = isChecked;
+};
+
+window.getSelectedJson = () => {
+    return filterJson(window.jsonData, checkboxMap);
+};
+
+window.filterJson = (node, checkboxMap) => {
+    if (typeof node === "object" && !Array.isArray(node)) {
+        const result = {};
+        for (let key in node) {
+            const path = key;
+            if (checkboxMap[path] !== false) {
+                result[key] = filterJson(node[key], checkboxMap);
+            }
+        }
+        return result;
+    } else if (Array.isArray(node)) {
+        const result = [];
+        for (let i = 0; i < node.length; i++) {
+            const path = `[${i}]`;
+            if (checkboxMap[path] !== false) {
+                result.push(filterJson(node[i], checkboxMap));
+            }
+        }
+        return result;
+    } else {
+        return checkboxMap ? node : null;
+    }
+};
