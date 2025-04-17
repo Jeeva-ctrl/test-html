@@ -1,3 +1,13 @@
+function toggleChildren(parent, isChecked) {
+    const childCheckboxes = parent.querySelectorAll('details > summary + * input[type="checkbox"]');
+    childCheckboxes.forEach(cb => {
+        cb.checked = isChecked;
+        const path = cb.dataset.path;
+        if (path) {
+            checkboxMap[path] = isChecked;
+        }
+    });
+}
 <script>
     let checkboxState = {};
 
