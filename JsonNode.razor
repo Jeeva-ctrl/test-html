@@ -1,115 +1,121 @@
-@page "/json-accordion"
-@using System.Text.Json.Nodes
-@inject IJSRuntime JSRuntime
-
-<h3>JSON Accordion</h3>
-
-<!-- Accordion Tree -->
-<div id="accordion-container">
-    @RenderNode(JsonData, "")
-</div>
-
-<!-- Button to get selected JSON -->
-<button @onclick="ExportSelectedJson">Get Selected JSON</button>
-
-<h4>Selected JSON:</h4>
-<pre id="json-output">Loading...</pre>
-
+@inject IJSRuntime JS
 @code {
-    [Parameter] public JsonNode JsonData { get; set; } = JsonNode.Parse("{ \"new\": { \"test\": \"test\" } }")!;
+    private JsonNode? JsonData;
+    private string FilteredJson = "";
 
-    protected override async Task OnInitializedAsync()
+    private async Task FetchAndRenderJson()
     {
-        await JSRuntime.InvokeVoidAsync("initializeCheckboxes", JsonData.ToString());
+        // Simulate API call
+        var responseJson = "{ \"new\": { \"test\": \"test\" } }"; // Replace with real API response
+        JsonData = JsonNode.Parse(responseJson);
+        await JS.InvokeVoidAsync("renderAccordionFromJson", "accordionContainer", JsonData.ToJsonString());
     }
 
-    // Render the JSON structure
-    private RenderFragment RenderNode(JsonNode? node, string path) => builder =>
+    private async Task GetFilteredJson()
     {
-        int seq = 0;
+        FilteredJson = await JS.InvokeAsync<string>("getFilteredJson");
+    }
+}
 
-        if (node is JsonObject obj)
-        {
-            builder.OpenElement(seq++, "details");
-            builder.AddAttribute(seq++, "open", true);
-            builder.AddAttribute(seq++, "data-path", path);
+<h3>Dynamic JSON Accordion</h3>
 
-            builder.OpenElement(seq++, "summary");
+<button @onclick="FetchAndRenderJson">Fetch & Render JSON</button>
+<button @onclick="GetFilteredJson">Get Filtered JSON</button>
 
-            builder.OpenElement(seq++, "input");
-            builder.AddAttribute(seq++, "type", "checkbox");
-            builder.AddAttribute(seq++, "data-path", path);
-            builder.AddAttribute(seq++, "checked", true);  // Initially checked
-            builder.AddAttribute(seq++, "onchange", EventCallback.Factory.Create<ChangeEventArgs>(this, e => OnCheckboxChange(path, obj)));
-            builder.CloseElement();
+<div id="accordionContainer"></div>
 
-            builder.AddContent(seq++, string.IsNullOrEmpty(path) ? "Root" : path.Split('.').Last());
-            builder.CloseElement();
+<h4>Filtered JSON:</h4>
+<pre>@FilteredJson</pre>
 
-            foreach (var prop in obj)
-            {
-                var childPath = string.IsNullOrEmpty(path) ? prop.Key : $"{path}.{prop.Key}";
-                builder.AddContent(seq++, RenderNode(prop.Value, childPath));
+@section Scripts {
+    <script>
+        let checkboxMap = {};
+
+        function renderAccordionFromJson(containerId, jsonStr) {
+            checkboxMap = {};
+            const container = document.getElementById(containerId);
+            container.innerHTML = '';
+            const json = JSON.parse(jsonStr);
+
+            function createAccordion(node, path) {
+                const wrapper = document.createElement('div');
+
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.checked = true;
+                checkboxMap[path] = true;
+
+                checkbox.onchange = () => {
+                    checkboxMap[path] = checkbox.checked;
+                    // Recurse for child checkboxes
+                    wrapper.querySelectorAll('input[type=checkbox]').forEach((cb, i) => {
+                        if (i !== 0) cb.checked = checkbox.checked;
+                        const childPath = cb.dataset.path;
+                        if (childPath) checkboxMap[childPath] = cb.checked;
+                    });
+                };
+
+                checkbox.dataset.path = path;
+                wrapper.appendChild(checkbox);
+
+                const label = document.createElement('span');
+                label.textContent = ` ${path.split('.').pop() || 'Root'}`;
+                wrapper.appendChild(label);
+
+                if (typeof node === 'object' && node !== null) {
+                    const details = document.createElement('details');
+                    details.open = true;
+                    const summary = document.createElement('summary');
+                    summary.appendChild(wrapper);
+                    details.appendChild(summary);
+
+                    if (Array.isArray(node)) {
+                        node.forEach((item, idx) => {
+                            const child = createAccordion(item, `${path}[${idx}]`);
+                            details.appendChild(child);
+                        });
+                    } else {
+                        for (const key in node) {
+                            const child = createAccordion(node[key], path ? `${path}.${key}` : key);
+                            details.appendChild(child);
+                        }
+                    }
+                    return details;
+                } else {
+                    return wrapper;
+                }
             }
 
-            builder.CloseElement();
+            const accordion = createAccordion(json, '');
+            container.appendChild(accordion);
         }
-        else if (node is JsonArray arr)
-        {
-            builder.OpenElement(seq++, "details");
-            builder.AddAttribute(seq++, "open", true);
-            builder.AddAttribute(seq++, "data-path", path);
 
-            builder.OpenElement(seq++, "summary");
+        function getFilteredJson() {
+            function deepFilter(obj, path = '') {
+                if (typeof obj !== 'object' || obj === null) {
+                    return checkboxMap[path] ? obj : undefined;
+                }
 
-            builder.OpenElement(seq++, "input");
-            builder.AddAttribute(seq++, "type", "checkbox");
-            builder.AddAttribute(seq++, "data-path", path);
-            builder.AddAttribute(seq++, "checked", true);  // Initially checked
-            builder.AddAttribute(seq++, "onchange", EventCallback.Factory.Create<ChangeEventArgs>(this, e => OnCheckboxChange(path, arr)));
-            builder.CloseElement();
-
-            builder.AddContent(seq++, path.Split('.').Last());
-            builder.CloseElement();
-
-            for (int i = 0; i < arr.Count; i++)
-            {
-                var childPath = $"{path}[{i}]";
-                builder.AddContent(seq++, RenderNode(arr[i], childPath));
+                if (Array.isArray(obj)) {
+                    const result = obj.map((item, i) => deepFilter(item, `${path}[${i}]`))
+                        .filter(v => v !== undefined);
+                    return result.length > 0 ? result : undefined;
+                } else {
+                    const result = {};
+                    for (const key in obj) {
+                        const childPath = path ? `${path}.${key}` : key;
+                        const filtered = deepFilter(obj[key], childPath);
+                        if (filtered !== undefined || obj[key] === null) {
+                            result[key] = filtered ?? null;
+                        }
+                    }
+                    return Object.keys(result).length > 0 ? result : undefined;
+                }
             }
 
-            builder.CloseElement();
+            const raw = JSON.parse(document.querySelector('#accordionContainer').dataset.rawjson || '{}');
+            const filtered = deepFilter(raw);
+            return JSON.stringify(filtered, null, 2);
         }
-        else
-        {
-            builder.OpenElement(seq++, "div");
-            builder.AddAttribute(seq++, "data-path", path);
-
-            builder.OpenElement(seq++, "input");
-            builder.AddAttribute(seq++, "type", "checkbox");
-            builder.AddAttribute(seq++, "data-path", path);
-            builder.AddAttribute(seq++, "checked", true);  // Initially checked
-            builder.AddAttribute(seq++, "onchange", EventCallback.Factory.Create<ChangeEventArgs>(this, e => OnCheckboxChange(path, node)));
-            builder.CloseElement();
-
-            builder.AddContent(seq++, $" {path.Split('.').Last()}: {node?.ToString()} ");
-
-            builder.CloseElement();
-        }
-    };
-
-    // On checkbox change, call JavaScript to update the checkbox state
-    private async Task OnCheckboxChange(string path, JsonNode node)
-    {
-        await JSRuntime.InvokeVoidAsync("updateCheckboxState", path, node.ToString());
-    }
-
-    // Export the selected JSON
-    private async Task ExportSelectedJson()
-    {
-        var selectedJson = await JSRuntime.InvokeAsync<string>("getSelectedJson");
-        var jsonNode = JsonNode.Parse(selectedJson);
-        var formattedJson = jsonNode?.ToString(new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
-        await JSRuntime.InvokeVoidAsync("setJsonOutput", formattedJson);
-    }
+    </script>
 }
