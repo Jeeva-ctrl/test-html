@@ -1,123 +1,50 @@
-@using System.Text.Json
+@page "/json-accordion"
 @using System.Text.Json.Nodes
+@inject IJSRuntime JSRuntime
 
-<div>
-    <h3>JSON Accordion</h3>
+<h3>JSON Accordion</h3>
+
+<!-- Accordion Tree -->
+<div id="accordion-container">
     @RenderNode(JsonData, "")
-
-    <h4>Selected JSON:</h4>
-    <pre>@FilteredJson?.ToJsonString(new JsonSerializerOptions { WriteIndented = true })</pre>
 </div>
 
+<!-- Button to get selected JSON -->
+<button @onclick="ExportSelectedJson">Get Selected JSON</button>
+
+<h4>Selected JSON:</h4>
+<pre id="json-output">Loading...</pre>
+
 @code {
-    [Parameter] public JsonNode JsonData { get; set; } = JsonNode.Parse("{\"new\":{\"test\":\"test\"}}")!;
-    private Dictionary<string, bool> CheckboxMap = new();
-    private JsonNode? FilteredJson;
+    [Parameter] public JsonNode JsonData { get; set; } = JsonNode.Parse("{ \"new\": { \"test\": \"test\" } }")!;
 
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
-        InitializeCheckboxes(JsonData, "");
-        FilteredJson = FilterJson(JsonData, "");
+        await JSRuntime.InvokeVoidAsync("initializeCheckboxes", JsonData.ToString());
     }
 
-    private void InitializeCheckboxes(JsonNode? node, string path)
-    {
-        CheckboxMap[path] = true;
-
-        if (node is JsonObject obj)
-        {
-            foreach (var prop in obj)
-                InitializeCheckboxes(prop.Value, string.IsNullOrEmpty(path) ? prop.Key : $"{path}.{prop.Key}");
-        }
-        else if (node is JsonArray arr)
-        {
-            for (int i = 0; i < arr.Count; i++)
-                InitializeCheckboxes(arr[i], $"{path}[{i}]");
-        }
-    }
-
-    private void ToggleCheckbox(ChangeEventArgs e, string path, JsonNode? node)
-    {
-        bool isChecked = (bool)e.Value!;
-        CheckboxMap[path] = isChecked;
-        CascadeUpdateCheckboxes(node, path, isChecked);
-        FilteredJson = FilterJson(JsonData, "");
-    }
-
-    private void CascadeUpdateCheckboxes(JsonNode? node, string path, bool state)
-    {
-        if (node is JsonObject obj)
-        {
-            foreach (var prop in obj)
-            {
-                var childPath = string.IsNullOrEmpty(path) ? prop.Key : $"{path}.{prop.Key}";
-                CheckboxMap[childPath] = state;
-                CascadeUpdateCheckboxes(prop.Value, childPath, state);
-            }
-        }
-        else if (node is JsonArray arr)
-        {
-            for (int i = 0; i < arr.Count; i++)
-            {
-                var childPath = $"{path}[{i}]";
-                CheckboxMap[childPath] = state;
-                CascadeUpdateCheckboxes(arr[i], childPath, state);
-            }
-        }
-    }
-
-    private JsonNode? FilterJson(JsonNode? node, string path)
-    {
-        if (!CheckboxMap.GetValueOrDefault(path, true)) return null;
-
-        if (node is JsonObject obj)
-        {
-            var result = new JsonObject();
-            foreach (var prop in obj)
-            {
-                var childPath = string.IsNullOrEmpty(path) ? prop.Key : $"{path}.{prop.Key}";
-                var filtered = FilterJson(prop.Value, childPath);
-                if (filtered != null || prop.Value is null)
-                    result[prop.Key] = filtered ?? null;
-            }
-            return result;
-        }
-        else if (node is JsonArray arr)
-        {
-            var result = new JsonArray();
-            for (int i = 0; i < arr.Count; i++)
-            {
-                var childPath = $"{path}[{i}]";
-                var filtered = FilterJson(arr[i], childPath);
-                result.Add(filtered ?? null);
-            }
-            return result;
-        }
-
-        return node;
-    }
-
-    RenderFragment RenderNode(JsonNode? node, string path) => builder =>
+    // Render the JSON structure
+    private RenderFragment RenderNode(JsonNode? node, string path) => builder =>
     {
         int seq = 0;
-        string label = string.IsNullOrEmpty(path) ? "Root" : path.Split('.').Last().Split('[').First();
 
         if (node is JsonObject obj)
         {
             builder.OpenElement(seq++, "details");
             builder.AddAttribute(seq++, "open", true);
-            builder.SetKey(path);
+            builder.AddAttribute(seq++, "data-path", path);
 
             builder.OpenElement(seq++, "summary");
 
             builder.OpenElement(seq++, "input");
             builder.AddAttribute(seq++, "type", "checkbox");
-            builder.AddAttribute(seq++, "checked", CheckboxMap.GetValueOrDefault(path, true));
-            builder.AddAttribute(seq++, "onchange", EventCallback.Factory.Create<ChangeEventArgs>(this, e => ToggleCheckbox(e, path, node)));
+            builder.AddAttribute(seq++, "data-path", path);
+            builder.AddAttribute(seq++, "checked", true);  // Initially checked
+            builder.AddAttribute(seq++, "onchange", EventCallback.Factory.Create<ChangeEventArgs>(this, e => OnCheckboxChange(path, obj)));
             builder.CloseElement();
 
-            builder.AddContent(seq++, $" {label}");
-            builder.CloseElement(); // summary
+            builder.AddContent(seq++, string.IsNullOrEmpty(path) ? "Root" : path.Split('.').Last());
+            builder.CloseElement();
 
             foreach (var prop in obj)
             {
@@ -125,23 +52,24 @@
                 builder.AddContent(seq++, RenderNode(prop.Value, childPath));
             }
 
-            builder.CloseElement(); // details
+            builder.CloseElement();
         }
         else if (node is JsonArray arr)
         {
             builder.OpenElement(seq++, "details");
             builder.AddAttribute(seq++, "open", true);
-            builder.SetKey(path);
+            builder.AddAttribute(seq++, "data-path", path);
 
             builder.OpenElement(seq++, "summary");
 
             builder.OpenElement(seq++, "input");
             builder.AddAttribute(seq++, "type", "checkbox");
-            builder.AddAttribute(seq++, "checked", CheckboxMap.GetValueOrDefault(path, true));
-            builder.AddAttribute(seq++, "onchange", EventCallback.Factory.Create<ChangeEventArgs>(this, e => ToggleCheckbox(e, path, node)));
+            builder.AddAttribute(seq++, "data-path", path);
+            builder.AddAttribute(seq++, "checked", true);  // Initially checked
+            builder.AddAttribute(seq++, "onchange", EventCallback.Factory.Create<ChangeEventArgs>(this, e => OnCheckboxChange(path, arr)));
             builder.CloseElement();
 
-            builder.AddContent(seq++, $" {label} [Array]");
+            builder.AddContent(seq++, path.Split('.').Last());
             builder.CloseElement();
 
             for (int i = 0; i < arr.Count; i++)
@@ -155,16 +83,33 @@
         else
         {
             builder.OpenElement(seq++, "div");
-            builder.SetKey(path);
+            builder.AddAttribute(seq++, "data-path", path);
 
             builder.OpenElement(seq++, "input");
             builder.AddAttribute(seq++, "type", "checkbox");
-            builder.AddAttribute(seq++, "checked", CheckboxMap.GetValueOrDefault(path, true));
-            builder.AddAttribute(seq++, "onchange", EventCallback.Factory.Create<ChangeEventArgs>(this, e => ToggleCheckbox(e, path, node)));
+            builder.AddAttribute(seq++, "data-path", path);
+            builder.AddAttribute(seq++, "checked", true);  // Initially checked
+            builder.AddAttribute(seq++, "onchange", EventCallback.Factory.Create<ChangeEventArgs>(this, e => OnCheckboxChange(path, node)));
             builder.CloseElement();
 
-            builder.AddContent(seq++, $" {label}: {node?.ToString()}");
+            builder.AddContent(seq++, $" {path.Split('.').Last()}: {node?.ToString()} ");
+
             builder.CloseElement();
         }
     };
+
+    // On checkbox change, call JavaScript to update the checkbox state
+    private async Task OnCheckboxChange(string path, JsonNode node)
+    {
+        await JSRuntime.InvokeVoidAsync("updateCheckboxState", path, node.ToString());
+    }
+
+    // Export the selected JSON
+    private async Task ExportSelectedJson()
+    {
+        var selectedJson = await JSRuntime.InvokeAsync<string>("getSelectedJson");
+        var jsonNode = JsonNode.Parse(selectedJson);
+        var formattedJson = jsonNode?.ToString(new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+        await JSRuntime.InvokeVoidAsync("setJsonOutput", formattedJson);
+    }
 }
