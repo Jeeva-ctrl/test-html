@@ -1,245 +1,178 @@
-@page "/jsonaccordion"
 @using System.Text.Json.Nodes
-@using System.Text.Json
-@using Microsoft.AspNetCore.Components
-
-<h3>JSON Accordion with Checkboxes</h3>
-
-<div>
-    @if (RootNode != null)
-    {
-        @RenderNode(RootNode, "", 0)
-    }
-</div>
-
-<h4>Selected JSON:</h4>
-<pre>@SelectedJson</pre>
 
 @code {
-    private JsonNode? RootNode;
+    [Parameter] public JsonNode JsonData { get; set; } = JsonNode.Parse("{ \"new\": { \"test\": \"test\" } }")!;
+
     private Dictionary<string, bool> CheckboxMap = new();
-    private string SelectedJson = "";
 
     protected override void OnInitialized()
     {
-        var json = """
-        {
-            "new": {
-                "test": "test",
-                "nullValue": null,
-                "nested": {
-                    "innerKey": "innerValue"
-                },
-                "array": [
-                    {
-                        "name": "Alice",
-                        "value": null
-                    },
-                    {
-                        "name": "Bob"
-                    }
-                ]
-            }
-        }
-        """;
-
-        RootNode = JsonNode.Parse(json);
-        UpdateSelectedJson();
+        InitializeCheckboxes(JsonData, "");
     }
 
-    private RenderFragment RenderNode(JsonNode? node, string path, int level) => builder =>
+    private void InitializeCheckboxes(JsonNode? node, string path)
     {
         if (node is JsonObject obj)
         {
-            foreach (var kvp in obj)
+            CheckboxMap[path] = true;
+            foreach (var prop in obj)
             {
-                var key = kvp.Key;
-                var value = kvp.Value;
-                var currentPath = string.IsNullOrEmpty(path) ? key : $"{path}.{key}";
-
-                if (value is JsonObject || value is JsonArray)
-                {
-                    builder.OpenElement(0, "details");
-                    builder.AddAttribute(1, "style", $"margin-left:{level * 20}px");
-                    builder.OpenElement(2, "summary");
-
-                    builder.OpenElement(3, "input");
-                    builder.AddAttribute(4, "type", "checkbox");
-                    builder.AddAttribute(5, "checked", IsChecked(currentPath));
-                    builder.AddAttribute(6, "onchange", EventCallback.Factory.Create<ChangeEventArgs>(this, e =>
-                    {
-                        bool isChecked = (bool)e.Value;
-                        CheckboxMap[currentPath] = isChecked;
-
-                        // Only recurse if it’s an object or array
-                        if (value is JsonObject || value is JsonArray)
-                        {
-                            SetAllChildren(value, currentPath, isChecked);
-                        }
-
-                        UpdateSelectedJson();
-                    }));
-                    builder.CloseElement(); // input
-
-                    builder.AddContent(7, $" {key}");
-                    builder.CloseElement(); // summary
-
-                    builder.AddContent(8, RenderNode(value, currentPath, level + 1));
-                    builder.CloseElement(); // details
-                }
-                else
-                {
-                    builder.OpenElement(9, "div");
-                    builder.AddAttribute(10, "style", $"margin-left:{level * 20}px");
-
-                    builder.OpenElement(11, "input");
-                    builder.AddAttribute(12, "type", "checkbox");
-                    builder.AddAttribute(13, "checked", IsChecked(currentPath));
-                    builder.AddAttribute(14, "onchange", EventCallback.Factory.Create<ChangeEventArgs>(this, e =>
-                    {
-                        CheckboxMap[currentPath] = (bool)e.Value;
-                        UpdateSelectedJson();
-                    }));
-                    builder.CloseElement(); // input
-
-                    builder.AddContent(15, $" {key}: {value?.ToJsonString() ?? "null"}");
-
-                    builder.CloseElement(); // div
-                }
+                var childPath = string.IsNullOrEmpty(path) ? prop.Key : $"{path}.{prop.Key}";
+                InitializeCheckboxes(prop.Value, childPath);
             }
         }
         else if (node is JsonArray arr)
         {
+            CheckboxMap[path] = true;
             for (int i = 0; i < arr.Count; i++)
             {
-                var item = arr[i];
-                var currentPath = $"{path}[{i}]";
-
-                if (item is JsonObject || item is JsonArray)
-                {
-                    builder.OpenElement(0, "details");
-                    builder.AddAttribute(1, "style", $"margin-left:{level * 20}px");
-                    builder.OpenElement(2, "summary");
-
-                    builder.OpenElement(3, "input");
-                    builder.AddAttribute(4, "type", "checkbox");
-                    builder.AddAttribute(5, "checked", IsChecked(currentPath));
-                    builder.AddAttribute(6, "onchange", EventCallback.Factory.Create<ChangeEventArgs>(this, e =>
-                    {
-                        bool isChecked = (bool)e.Value;
-                        CheckboxMap[currentPath] = isChecked;
-
-                        if (item is JsonObject || item is JsonArray)
-                        {
-                            SetAllChildren(item, currentPath, isChecked);
-                        }
-
-                        UpdateSelectedJson();
-                    }));
-                    builder.CloseElement(); // input
-
-                    builder.AddContent(7, $" Item {i}");
-                    builder.CloseElement(); // summary
-
-                    builder.AddContent(8, RenderNode(item, currentPath, level + 1));
-                    builder.CloseElement(); // details
-                }
-                else
-                {
-                    builder.OpenElement(9, "div");
-                    builder.AddAttribute(10, "style", $"margin-left:{level * 20}px");
-
-                    builder.OpenElement(11, "input");
-                    builder.AddAttribute(12, "type", "checkbox");
-                    builder.AddAttribute(13, "checked", IsChecked(currentPath));
-                    builder.AddAttribute(14, "onchange", EventCallback.Factory.Create<ChangeEventArgs>(this, e =>
-                    {
-                        CheckboxMap[currentPath] = (bool)e.Value;
-                        UpdateSelectedJson();
-                    }));
-                    builder.CloseElement(); // input
-
-                    builder.AddContent(15, $" Item {i}: {item?.ToJsonString() ?? "null"}");
-
-                    builder.CloseElement(); // div
-                }
-            }
-        }
-    };
-
-    private bool IsChecked(string path)
-    {
-        return !CheckboxMap.ContainsKey(path) || CheckboxMap[path];
-    }
-
-    private void SetAllChildren(JsonNode? node, string path, bool isChecked)
-    {
-        if (node is JsonObject obj)
-        {
-            foreach (var kvp in obj)
-            {
-                var childPath = $"{path}.{kvp.Key}";
-                CheckboxMap[childPath] = isChecked;
-
-                if (kvp.Value is JsonObject || kvp.Value is JsonArray)
-                {
-                    SetAllChildren(kvp.Value, childPath, isChecked);
-                }
-            }
-        }
-        else if (node is JsonArray arr)
-        {
-            for (int i = 0; i < arr.Count; i++)
-            {
-                var item = arr[i];
                 var childPath = $"{path}[{i}]";
-                CheckboxMap[childPath] = isChecked;
-
-                if (item is JsonObject || item is JsonArray)
-                {
-                    SetAllChildren(item, childPath, isChecked);
-                }
+                InitializeCheckboxes(arr[i], childPath);
             }
-        }
-    }
-
-    private JsonNode? FilterJson(JsonNode? node, string path = "")
-    {
-        if (node is JsonObject obj)
-        {
-            var result = new JsonObject();
-            foreach (var kvp in obj)
-            {
-                var currentPath = string.IsNullOrEmpty(path) ? kvp.Key : $"{path}.{kvp.Key}";
-                if (!IsChecked(currentPath)) continue;
-
-                var filtered = FilterJson(kvp.Value, currentPath);
-                result[kvp.Key] = filtered;
-            }
-            return result;
-        }
-        else if (node is JsonArray arr)
-        {
-            var result = new JsonArray();
-            for (int i = 0; i < arr.Count; i++)
-            {
-                var currentPath = $"{path}[{i}]";
-                if (!IsChecked(currentPath)) continue;
-
-                var filtered = FilterJson(arr[i], currentPath);
-                result.Add(filtered);
-            }
-            return result;
         }
         else
         {
-            return node?.DeepClone(); // Preserve nulls and values
+            CheckboxMap[path] = true;
         }
     }
 
-    private void UpdateSelectedJson()
+    private void ToggleCheckbox(ChangeEventArgs e, string path, JsonNode? node)
     {
-        var filtered = FilterJson(RootNode);
-        SelectedJson = filtered?.ToJsonString(new JsonSerializerOptions { WriteIndented = true }) ?? "";
+        bool isChecked = (bool)e.Value!;
+        CheckboxMap[path] = isChecked;
+
+        if (node is JsonObject obj)
+        {
+            foreach (var prop in obj)
+            {
+                var childPath = string.IsNullOrEmpty(path) ? prop.Key : $"{path}.{prop.Key}";
+                ToggleCheckbox(new ChangeEventArgs { Value = isChecked }, childPath, prop.Value);
+            }
+        }
+        else if (node is JsonArray arr)
+        {
+            for (int i = 0; i < arr.Count; i++)
+            {
+                var childPath = $"{path}[{i}]";
+                ToggleCheckbox(new ChangeEventArgs { Value = isChecked }, childPath, arr[i]);
+            }
+        }
     }
+
+    private JsonNode? FilterJson(JsonNode? node, string path)
+    {
+        if (node is JsonObject obj)
+        {
+            if (!CheckboxMap.GetValueOrDefault(path, true)) return null;
+
+            var result = new JsonObject();
+            foreach (var prop in obj)
+            {
+                var childPath = string.IsNullOrEmpty(path) ? prop.Key : $"{path}.{prop.Key}";
+                var filtered = FilterJson(prop.Value, childPath);
+                if (filtered != null || prop.Value == null)
+                {
+                    result[prop.Key] = filtered ?? null;
+                }
+            }
+            return result.Count > 0 ? result : null;
+        }
+        else if (node is JsonArray arr)
+        {
+            if (!CheckboxMap.GetValueOrDefault(path, true)) return null;
+
+            var result = new JsonArray();
+            for (int i = 0; i < arr.Count; i++)
+            {
+                var childPath = $"{path}[{i}]";
+                var filtered = FilterJson(arr[i], childPath);
+                if (filtered != null || arr[i] == null)
+                {
+                    result.Add(filtered ?? null);
+                }
+            }
+            return result.Count > 0 ? result : null;
+        }
+        else
+        {
+            return CheckboxMap.GetValueOrDefault(path, true) ? node : null;
+        }
+    }
+}
+
+<div>
+    <h3>JSON Accordion</h3>
+    @RenderNode(JsonData, "")
+
+    <h4>Selected JSON:</h4>
+    <pre>@FilterJson(JsonData, "")?.ToJsonString(new System.Text.Json.JsonSerializerOptions { WriteIndented = true })</pre>
+</div>
+
+@functions {
+    RenderFragment RenderNode(JsonNode? node, string path) => builder =>
+    {
+        int seq = 0;
+
+        if (node is JsonObject obj)
+        {
+            builder.OpenElement(seq++, "details");
+            builder.AddAttribute(seq++, "open", true);
+            builder.AddAttribute(seq++, "@key", path);
+
+            builder.OpenElement(seq++, "summary");
+            builder.OpenElement(seq++, "input");
+            builder.AddAttribute(seq++, "type", "checkbox");
+            builder.AddAttribute(seq++, "checked", CheckboxMap.GetValueOrDefault(path, true));
+            builder.AddAttribute(seq++, "onchange", EventCallback.Factory.Create<ChangeEventArgs>(this, e => ToggleCheckbox(e, path, node)));
+            builder.CloseElement();
+            builder.AddContent(seq++, string.IsNullOrEmpty(path) ? "Root" : path.Split('.').Last());
+            builder.CloseElement();
+
+            foreach (var prop in obj)
+            {
+                var childPath = string.IsNullOrEmpty(path) ? prop.Key : $"{path}.{prop.Key}";
+                builder.AddContent(seq++, RenderNode(prop.Value, childPath));
+            }
+
+            builder.CloseElement();
+        }
+        else if (node is JsonArray arr)
+        {
+            builder.OpenElement(seq++, "details");
+            builder.AddAttribute(seq++, "open", true);
+            builder.AddAttribute(seq++, "@key", path);
+
+            builder.OpenElement(seq++, "summary");
+            builder.OpenElement(seq++, "input");
+            builder.AddAttribute(seq++, "type", "checkbox");
+            builder.AddAttribute(seq++, "checked", CheckboxMap.GetValueOrDefault(path, true));
+            builder.AddAttribute(seq++, "onchange", EventCallback.Factory.Create<ChangeEventArgs>(this, e => ToggleCheckbox(e, path, node)));
+            builder.CloseElement();
+            builder.AddContent(seq++, path.Split('.').Last());
+            builder.CloseElement();
+
+            for (int i = 0; i < arr.Count; i++)
+            {
+                var childPath = $"{path}[{i}]";
+                builder.AddContent(seq++, RenderNode(arr[i], childPath));
+            }
+
+            builder.CloseElement();
+        }
+        else
+        {
+            builder.OpenElement(seq++, "div");
+            builder.AddAttribute(seq++, "@key", path);
+
+            builder.OpenElement(seq++, "input");
+            builder.AddAttribute(seq++, "type", "checkbox");
+            builder.AddAttribute(seq++, "checked", CheckboxMap.GetValueOrDefault(path, true));
+            builder.AddAttribute(seq++, "onchange", EventCallback.Factory.Create<ChangeEventArgs>(this, e => ToggleCheckbox(e, path, node)));
+            builder.CloseElement();
+
+            builder.AddContent(seq++, $" {path.Split('.').Last()}: {node?.ToString()} ");
+
+            builder.CloseElement();
+        }
+    };
 }
