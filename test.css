@@ -1,11 +1,55 @@
-.value {
-  background-color: #f0f0f0;
-  padding: 2px 6px;
-  margin-left: 4px;
-  border-radius: 4px;
-  display: inline-block;
-}
-.ms-0 { margin-left: 0; }
-.ms-1 { margin-left: 20px; }
-.ms-2 { margin-left: 40px; }
-.ms-3 { margin-left: 60px; }
+window.initializeCheckboxes = (jsonData) => {
+    // Initialize checkbox map and JSON tree.
+    window.checkboxMap = {};
+
+    // Parse JSON data and create an initial map for all checkboxes
+    const data = JSON.parse(jsonData);
+    processNode(data, "");
+};
+
+window.processNode = (node, path) => {
+    if (Array.isArray(node)) {
+        node.forEach((item, index) => {
+            const childPath = `${path}[${index}]`;
+            window.checkboxMap[childPath] = true; // Default checked
+            window.processNode(item, childPath);
+        });
+    } else if (typeof node === "object" && node !== null) {
+        for (const key in node) {
+            const childPath = path ? `${path}.${key}` : key;
+            window.checkboxMap[childPath] = true; // Default checked
+            window.processNode(node[key], childPath);
+        }
+    } else {
+        window.checkboxMap[path] = true; // Default checked for values
+    }
+};
+
+window.updateCheckboxState = (path, value) => {
+    window.checkboxMap[path] = !window.checkboxMap[path];
+    // Optionally, update the UI checkbox state here if needed.
+};
+
+window.getSelectedJson = () => {
+    return JSON.stringify(filterJson(window.checkboxMap, window.jsonData));
+};
+
+window.filterJson = (checkboxMap, data, path = "") => {
+    if (Array.isArray(data)) {
+        return data.map((item, index) => filterJson(checkboxMap, item, `${path}[${index}]`)).filter(item => item !== null);
+    } else if (typeof data === "object" && data !== null) {
+        const result = {};
+        for (const key in data) {
+            const childPath = path ? `${path}.${key}` : key;
+            if (checkboxMap[childPath]) {
+                result[key] = filterJson(checkboxMap, data[key], childPath);
+            }
+        }
+        return Object.keys(result).length > 0 ? result : null;
+    }
+    return checkboxMap[path] ? data : null;
+};
+
+window.setJsonOutput = (json) => {
+    document.getElementById("json-output").innerText = json;
+};
