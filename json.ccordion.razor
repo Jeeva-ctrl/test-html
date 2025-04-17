@@ -1,129 +1,55 @@
-@page "/jsonaccordion"
-@using System.Text.Json
-@using System.Text.Json.Nodes
-@using YourApp.Components
-@using YourApp.Models
+window.initializeCheckboxes = (jsonData) => {
+    // Initialize checkbox map and JSON tree.
+    window.checkboxMap = {};
 
-<h3>JSON Accordion with Checkboxes (Blazor)</h3>
+    // Parse JSON data and create an initial map for all checkboxes
+    const data = JSON.parse(jsonData);
+    processNode(data, "");
+};
 
-@if (RootNodes != null)
-{
-    @foreach (var node in RootNodes)
-    {
-        <JsonNode TItem="object" Node="node" OnChange="UpdateJsonOutput" />
-    }
-    <h4>Selected JSON:</h4>
-    <pre>@JsonOutput</pre>
-}
-else
-{
-    <p>Loading...</p>
-}
-
-@code {
-    private List<JsonNode>? RootNodes;
-    private string JsonOutput = "Loading...";
-
-    private string OriginalJson = """
-    [
-        {
-            "name": "Alice",
-            "age": 30,
-            "department": {
-                "name": "Engineering",
-                "manager": "John"
-            },
-            "education": [
-                { "degree": "B.Tech", "university": "ABC University" },
-                { "degree": "M.Tech", "university": "XYZ Institute" }
-            ]
-        },
-        {
-            "name": "Bob",
-            "age": 28,
-            "department": {
-                "name": "Marketing",
-                "manager": "Sara"
-            },
-            "education": [
-                { "degree": "BBA", "university": "LMN College" }
-            ]
+window.processNode = (node, path) => {
+    if (Array.isArray(node)) {
+        node.forEach((item, index) => {
+            const childPath = `${path}[${index}]`;
+            window.checkboxMap[childPath] = true; // Default checked
+            window.processNode(item, childPath);
+        });
+    } else if (typeof node === "object" && node !== null) {
+        for (const key in node) {
+            const childPath = path ? `${path}.${key}` : key;
+            window.checkboxMap[childPath] = true; // Default checked
+            window.processNode(node[key], childPath);
         }
-    ]
-    """;
-
-    protected override void OnInitialized()
-    {
-        var jsonNode = JsonNode.Parse(OriginalJson);
-        RootNodes = ConvertToJsonNodes(jsonNode);
-        UpdateJsonOutput();
+    } else {
+        window.checkboxMap[path] = true; // Default checked for values
     }
+};
 
-    private List<JsonNode> ConvertToJsonNodes(JsonNode? node, string? key = null)
-    {
-        var result = new List<JsonNode>();
-        if (node is JsonArray arr)
-        {
-            int index = 0;
-            foreach (var item in arr)
-            {
-                var childNode = new JsonNode
-                {
-                    Key = key != null ? $"{key}[{index}]" : $"Item {index}",
-                    Children = ConvertToJsonNodes(item),
-                    IsChecked = true
-                };
-                result.Add(childNode);
-                index++;
+window.updateCheckboxState = (path, value) => {
+    window.checkboxMap[path] = !window.checkboxMap[path];
+    // Optionally, update the UI checkbox state here if needed.
+};
+
+window.getSelectedJson = () => {
+    return JSON.stringify(filterJson(window.checkboxMap, window.jsonData));
+};
+
+window.filterJson = (checkboxMap, data, path = "") => {
+    if (Array.isArray(data)) {
+        return data.map((item, index) => filterJson(checkboxMap, item, `${path}[${index}]`)).filter(item => item !== null);
+    } else if (typeof data === "object" && data !== null) {
+        const result = {};
+        for (const key in data) {
+            const childPath = path ? `${path}.${key}` : key;
+            if (checkboxMap[childPath]) {
+                result[key] = filterJson(checkboxMap, data[key], childPath);
             }
         }
-        else if (node is JsonObject obj)
-        {
-            var current = new JsonNode
-            {
-                Key = key,
-                Children = new(),
-                IsChecked = true
-            };
-
-            foreach (var prop in obj)
-            {
-                current.Children.AddRange(ConvertToJsonNodes(prop.Value, prop.Key));
-            }
-            result.Add(current);
-        }
-        else
-        {
-            result.Add(new JsonNode { Key = key, Value = node?.ToString(), IsChecked = true });
-        }
-        return result;
+        return Object.keys(result).length > 0 ? result : null;
     }
+    return checkboxMap[path] ? data : null;
+};
 
-    private void UpdateJsonOutput()
-    {
-        var filtered = FilterJsonNodes(RootNodes);
-        JsonOutput = JsonSerializer.Serialize(filtered, new JsonSerializerOptions { WriteIndented = true });
-    }
-
-    private object? FilterJsonNodes(List<JsonNode>? nodes)
-    {
-        if (nodes == null) return null;
-
-        var list = new List<object>();
-        foreach (var node in nodes)
-        {
-            if (!node.IsChecked) continue;
-
-            if (node.Children != null && node.Children.Any())
-            {
-                var childObj = FilterJsonNodes(node.Children);
-                list.Add(childObj ?? new Dictionary<string, object>());
-            }
-            else
-            {
-                list.Add(new Dictionary<string, object?> { [node.Key ?? ""] = node.Value });
-            }
-        }
-        return list;
-    }
-}
+window.setJsonOutput = (json) => {
+    document.getElementById("json-output").innerText = json;
+};
